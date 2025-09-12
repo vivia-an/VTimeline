@@ -435,6 +435,6 @@ def vinit(metrics: List[str] = ["GPUMem", "MFU"]):
         return
 
     tracepoint_module_setup(metrics)
-    CUPTI.initialize()
+    CUPTI.initialize('/usr/local/lib/libvtimeline.so')
     MetricRecorder.initialize(metrics)
     _vinit_initialized = True

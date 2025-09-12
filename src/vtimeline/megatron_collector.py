@@ -34,8 +34,8 @@ class MegatronCollector:
 
         db_path = os.path.join(
             root_dir,
-            "Collector/coredump_{}_{}.db".format(
-                cls.ranks_info_["dp"], cls.ranks_info_["tp"]
+            "Collector/coredump_{}_{}_{}.db".format(
+                cls.ranks_info_["dp"], cls.ranks_info_["tp"],cls.ranks_info_["pp"]
             ),
         )
         cls.db_ = duckdb.connect(db_path)

@@ -20,6 +20,8 @@ def _get_cksum(data: torch.Tensor):
 class MegatronCollector:
     step_ = 0
     dump_step_: int = int(os.getenv("VTIMELINE_DUMP_STEP", -1))
+    # 每个进程仅 dump 一个 batch 的一次性开关
+    dumped_training_batch_once_: bool = False
 
     def __init__(self):
         raise RuntimeError("Use initialize to init Megatron Core Collector")
@@ -34,8 +36,8 @@ class MegatronCollector:
 
         db_path = os.path.join(
             root_dir,
-            "Collector/coredump_{}_{}_{}.db".format(
-                cls.ranks_info_["dp"], cls.ranks_info_["tp"],cls.ranks_info_["pp"]
+            "Collector/coredump_dp{}_tp{}_pp{}_cp{}.db".format(
+                cls.ranks_info_["dp"], cls.ranks_info_["tp"],cls.ranks_info_["pp"],cls.ranks_info_["cp"]
             ),
         )
         cls.db_ = duckdb.connect(db_path)
@@ -148,6 +150,46 @@ class MegatronCollector:
                     )
                 except Exception as e:
                     print(f"Error inserting data into coredump: {e}")
+
+
+    @classmethod
+    def dump_training_batch(cls, tokens, labels, loss_mask, attention_mask, position_ids, stage_name: str = "after-get-batch"):
+        """Dump key training batch info after get_batch.
+
+        Make the JSON data format consistent with other dumps: one row per tensor with fields
+        name, cksum, shape, type, plus rank info.
+        """
+        # 若已在本进程 dump 过一次训练 batch，则不再重复 dump
+        if cls.dumped_training_batch_once_:
+            return
+        if not cls.should_dump():
+            return
+
+        items = [
+            ("tokens", tokens),
+            ("labels", labels),
+            ("loss_mask", loss_mask),
+            ("attention_mask", attention_mask),
+            ("position_ids", position_ids),
+        ]
+
+        for name, t in items:
+            try:
+                info = {
+                    "name": name,
+                    "cksum": _get_cksum(t) if t is not None else None,
+                    "shape": list(t.shape) if t is not None else None,
+                    "type": str(t.type()) if t is not None else None,
+                }
+                info.update(cls.ranks_info_)
+                cls.db_.execute(
+                    "INSERT INTO coredump VALUES (?, ?, ?);",
+                    (cls.step_, stage_name, json.dumps(info)),
+                )
+            except Exception as e:
+                print(f"Error inserting batch data into coredump: {e}")
+        # 标记本进程已完成一次训练 batch dump
+        cls.dumped_training_batch_once_ = True
 
     @classmethod
     def step(cls):

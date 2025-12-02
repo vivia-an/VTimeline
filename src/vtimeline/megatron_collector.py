@@ -126,6 +126,7 @@ class MegatronCollector:
 
         for model in cls.model_:
             for name, param in model.named_parameters():
+                # 基础信息
                 param_info = {
                     "name": name,
                     "cksum": _get_cksum(param),
@@ -142,6 +143,20 @@ class MegatronCollector:
                     if param.grad is not None
                     else None,
                 }
+                
+                # 添加分布统计量：min, max, quantile (用于极值/分位数一致性检查)
+                try:
+                    if param.requires_grad and param.dtype in (torch.float32, torch.float16, torch.bfloat16):
+                        flat_param = param.detach().float().flatten()
+                        param_info["min"] = float(flat_param.min().item())
+                        param_info["max"] = float(flat_param.max().item())
+                        # 计算分位数 (25%, 50%, 75%)
+                        param_info["quantile_25"] = float(torch.quantile(flat_param, 0.25).item())
+                        param_info["quantile_50"] = float(torch.quantile(flat_param, 0.50).item())
+                        param_info["quantile_75"] = float(torch.quantile(flat_param, 0.75).item())
+                except Exception:
+                    pass  # 统计量计算失败不影响主流程
+                
                 param_info.update(cls.ranks_info_)
                 try:
                     cls.db_.execute(

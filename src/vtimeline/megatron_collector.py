@@ -144,6 +144,13 @@ class MegatronCollector:
                     else None,
                 }
                 
+                # 添加分片参数标识 (用于DP分片参数互异性检查)
+                # Megatron-LM 中 param.allreduce=False 表示专家并行参数（分片参数）
+                # param.allreduce=True 或不存在表示全复制参数
+                is_expert_parallel = not getattr(param, 'allreduce', True)
+                param_info["param_sharded"] = is_expert_parallel
+                param_info["param_full_replica"] = not is_expert_parallel
+                
                 # 添加分布统计量：min, max, quantile (用于极值/分位数一致性检查)
                 try:
                     if param.requires_grad and param.dtype in (torch.float32, torch.float16, torch.bfloat16):

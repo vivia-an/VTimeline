@@ -220,7 +220,10 @@ class MegatronCollector:
                         param_to_name[id(param.main_param)] = name
         
         # Iterate through optimizer state
-        for group in pytorch_optimizer.param_groups:
+        for group_idx, group in enumerate(pytorch_optimizer.param_groups):
+            # 获取该 param_group 的 lr（用于 optimizer_state_dict.lr 一致性检查）
+            group_lr = group.get('lr', None)
+            
             for param in group['params']:
                 if param not in pytorch_optimizer.state:
                     continue
@@ -239,6 +242,8 @@ class MegatronCollector:
                             "cksum": _get_cksum(state_value),
                             "shape": list(state_value.shape),
                             "type": str(state_value.type()),
+                            "lr": group_lr,  # 添加 lr 字段用于一致性检查
+                            "param_group_idx": group_idx,  # 添加 group 索引
                         }
                         state_info.update(cls.ranks_info_)
                         

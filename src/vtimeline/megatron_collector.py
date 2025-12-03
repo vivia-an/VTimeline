@@ -176,6 +176,28 @@ class MegatronCollector:
                                 # 峰度 (kurtosis): E[(X-μ)⁴] / σ⁴ - 3 (Fisher's definition)
                                 kurtosis = ((flat_param - mean) ** 4).mean() / (std ** 4) - 3.0
                                 param_info["kurtosis"] = float(kurtosis.item())
+                        
+                        # 添加分布形态统计量：histogram 和 entropy
+                        # 用于 DP参数分布形态一致性检查
+                        if n > 10:  # 需要足够的元素才能计算有意义的直方图
+                            # 计算直方图 (使用 64 个 bin，归一化后计算 checksum)
+                            hist_bins = 64
+                            hist_min = flat_param.min()
+                            hist_max = flat_param.max()
+                            if hist_max > hist_min:
+                                hist = torch.histc(flat_param, bins=hist_bins, min=float(hist_min), max=float(hist_max))
+                                hist_normalized = hist / hist.sum()  # 归一化为概率分布
+                                
+                                # histogram_cksum: 直方图的 checksum（用于检测分布形态差异）
+                                hist_bytes = hist_normalized.cpu().numpy().tobytes()
+                                param_info["histogram_cksum"] = hash(hist_bytes) & 0xFFFFFFFF  # 32-bit hash
+                                
+                                # 计算熵 (entropy): -sum(p * log(p))
+                                # 过滤掉零概率以避免 log(0)
+                                hist_nonzero = hist_normalized[hist_normalized > 1e-10]
+                                if len(hist_nonzero) > 0:
+                                    entropy = -torch.sum(hist_nonzero * torch.log(hist_nonzero))
+                                    param_info["entropy"] = float(entropy.item())
                 except Exception:
                     pass  # 统计量计算失败不影响主流程
                 

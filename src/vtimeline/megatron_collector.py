@@ -161,6 +161,21 @@ class MegatronCollector:
                         param_info["quantile_25"] = float(torch.quantile(flat_param, 0.25).item())
                         param_info["quantile_50"] = float(torch.quantile(flat_param, 0.50).item())
                         param_info["quantile_75"] = float(torch.quantile(flat_param, 0.75).item())
+                        
+                        # 添加高阶统计量：skewness (偏度) 和 kurtosis (峰度)
+                        # 用于 model-before-optimizer-step阶段DP参数分布高阶统计量一致性检查
+                        n = flat_param.numel()
+                        if n > 2:  # 需要至少3个元素才能计算偏度和峰度
+                            mean = flat_param.mean()
+                            std = flat_param.std()
+                            if std > 1e-10:  # 避免除零
+                                # 偏度 (skewness): E[(X-μ)³] / σ³
+                                skewness = ((flat_param - mean) ** 3).mean() / (std ** 3)
+                                param_info["skewness"] = float(skewness.item())
+                                
+                                # 峰度 (kurtosis): E[(X-μ)⁴] / σ⁴ - 3 (Fisher's definition)
+                                kurtosis = ((flat_param - mean) ** 4).mean() / (std ** 4) - 3.0
+                                param_info["kurtosis"] = float(kurtosis.item())
                 except Exception:
                     pass  # 统计量计算失败不影响主流程
                 
